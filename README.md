@@ -98,15 +98,15 @@ The server handles token refresh automatically, so you won't need to reauthentic
    notepad %APPDATA%\Claude\claude_desktop_config.json
    ```
 
-3. Add the TickTick MCP server configuration:
+3. Add the TickTick MCP server configuration, using absolute paths:
    ```json
    {
-     "mcpServers": {
-       "ticktick": {
-         "command": "uv",
-         "args": ["run", "-m", "ticktick_mcp.cli", "run"]
-       }
-     }
+      "mcpServers": {
+         "ticktick": {
+            "command": "<absolute path to uv>",
+            "args": ["run", "--directory", "<absolute path to ticktick-mcp directory>", "-m", "ticktick_mcp.cli", "run"]
+         }
+      }
    }
    ```
 
