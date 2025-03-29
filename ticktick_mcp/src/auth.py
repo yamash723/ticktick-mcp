@@ -8,7 +8,6 @@ without manually copying and pasting tokens.
 
 import os
 import webbrowser
-import json
 import time
 import base64
 import http.server
@@ -19,6 +18,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple, Any
 from dotenv import load_dotenv
 import logging
+import threading
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -137,7 +137,7 @@ class TickTickAuth:
     """TickTick OAuth authentication manager."""
     
     def __init__(self, client_id: str = None, client_secret: str = None, 
-                 redirect_uri: str = "http://localhost:8000/callback",
+                 redirect_uri: str = None,
                  port: int = 8000, env_file: str = None):
         """
         Initialize the TickTick authentication manager.
@@ -157,7 +157,8 @@ class TickTickAuth:
         
         self.client_id = client_id or os.getenv("TICKTICK_CLIENT_ID")
         self.client_secret = client_secret or os.getenv("TICKTICK_CLIENT_SECRET")
-        self.redirect_uri = redirect_uri
+
+        self.redirect_uri = redirect_uri or os.getenv("TICKTICK_REDIRECT_URI") or "http://localhost:8000/callback"
         self.port = port
         self.auth_code = None
         self.tokens = None
@@ -198,66 +199,71 @@ class TickTickAuth:
     
     def start_auth_flow(self, scopes: list = None) -> str:
         """
-        Start the OAuth flow by opening the browser and waiting for the callback.
+        Start the OAuth authentication flow.
+        
+        This will:
+        1. Start a local HTTP server to receive the callback
+        2. Open a browser window with the authorization URL
+        3. Wait for the user to authorize the app
+        4. Receive the authorization code in the callback
+        5. Exchange the code for access and refresh tokens
+        6. Save the tokens to the .env file
         
         Args:
             scopes: List of OAuth scopes to request
             
         Returns:
-            The obtained access token or an error message
+            A message indicating success or failure
         """
         if not self.client_id or not self.client_secret:
-            return "TickTick client ID or client secret is missing. Please set up your credentials first."
-        
-        # Generate a random state parameter for CSRF protection
-        state = base64.urlsafe_b64encode(os.urandom(30)).decode('utf-8')
+            return "ERROR: TickTick client ID or client secret is missing."
         
         # Get the authorization URL
-        auth_url = self.get_authorization_url(scopes, state)
+        auth_url = self.get_authorization_url(scopes)
         
-        print(f"Opening browser for TickTick authorization...")
-        print(f"If the browser doesn't open automatically, please visit this URL:")
-        print(auth_url)
+        # Start the callback server in a separate thread
+        server = socketserver.TCPServer(("0.0.0.0", self.port), OAuthCallbackHandler)
+        server_thread = threading.Thread(target=server.serve_forever)
+        server_thread.daemon = True
+        server_thread.start()
         
-        # Open the browser for the user to authorize
-        webbrowser.open(auth_url)
-        
-        # Start a local server to handle the OAuth callback
-        httpd = None
         try:
-            # Use a socket server to handle the callback
-            OAuthCallbackHandler.auth_code = None
-            httpd = socketserver.TCPServer(("", self.port), OAuthCallbackHandler)
+            # Open the browser for authorization
+            print(f"Opening browser to: {auth_url}")
+            webbrowser.open(auth_url)
             
-            print(f"Waiting for authentication callback on port {self.port}...")
+            # Docker環境のサポート - ブラウザが開けない場合の手動手順を表示
+            print("\nIf the browser doesn't open automatically, or if you're running in Docker,")
+            print("please manually open the following URL in your browser:")
+            print(f"\n{auth_url}\n")
             
-            # Run the server until we get the authorization code
-            # Set a timeout for the server
-            timeout = 300  # 5 minutes
+            # Wait for the authorization code
+            print("Waiting for authorization...")
+            
+            # Poll for auth code
             start_time = time.time()
+            timeout = 300  # 5 minutes
+            while not OAuthCallbackHandler.auth_code and time.time() - start_time < timeout:
+                time.sleep(1)
             
-            while not OAuthCallbackHandler.auth_code:
-                # Handle one request with a short timeout
-                httpd.timeout = 1.0
-                httpd.handle_request()
-                
-                # Check if we've timed out
-                if time.time() - start_time > timeout:
-                    return "Authentication timed out. Please try again."
+            # Check if we got the code
+            if not OAuthCallbackHandler.auth_code:
+                return "ERROR: Authentication timed out. Please try again."
             
-            # Store the auth code
+            # Store the code
             self.auth_code = OAuthCallbackHandler.auth_code
             
             # Exchange the code for tokens
-            return self.exchange_code_for_token()
+            token_result = self.exchange_code_for_token()
             
-        except Exception as e:
-            logger.error(f"Error during OAuth flow: {e}")
-            return f"Error during OAuth flow: {str(e)}"
+            # Reset the class variable for future use
+            OAuthCallbackHandler.auth_code = None
+            
+            return token_result
         finally:
-            # Clean up the server
-            if httpd:
-                httpd.server_close()
+            # Shutdown the server
+            server.shutdown()
+            server.server_close()
     
     def exchange_code_for_token(self) -> str:
         """
@@ -293,7 +299,7 @@ class TickTickAuth:
             response.raise_for_status()
             
             # Parse the response
-            self.tokens = response.json()
+        
             
             # Save the tokens to the .env file
             self._save_tokens_to_env()
@@ -304,7 +310,7 @@ class TickTickAuth:
             logger.error(f"Error exchanging code for token: {e}")
             if hasattr(e, 'response') and e.response is not None:
                 try:
-                    error_details = e.response.json()
+                
                     return f"Error exchanging code for token: {error_details}"
                 except:
                     return f"Error exchanging code for token: {e.response.text}"
@@ -370,6 +376,7 @@ def setup_auth_cli():
     
     result = auth.start_auth_flow()
     print(result)
+
 
 if __name__ == "__main__":
     setup_auth_cli()

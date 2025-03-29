@@ -11,6 +11,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ti
 - 🗑️ Delete tasks and projects
 - 🔄 Full integration with TickTick's open API
 - 🔌 Seamless integration with Claude and other MCP clients
+- 🐳 Docker support for easy deployment
 
 ## Prerequisites
 
@@ -18,8 +19,11 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ti
 - [uv](https://github.com/astral-sh/uv) - Fast Python package installer and resolver
 - TickTick account with API access
 - TickTick API credentials (Client ID, Client Secret, Access Token)
+- (Optional) Docker and Docker Compose for containerized deployment
 
 ## Installation
+
+### Standard Installation
 
 1. **Clone this repository**:
    ```bash
@@ -61,6 +65,41 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ti
    uv run test_server.py
    ```
    This will verify that your TickTick credentials are working correctly.
+
+### Docker Installation
+
+1. **Clone this repository**:
+   ```bash
+   git clone https://github.com/parkjs814/ticktick-mcp.git
+   cd ticktick-mcp
+   ```
+
+2. **Initialize environment file**:
+   ```bash
+   ./setup-env.sh
+   ```
+   This will create a `.env` file from the `.env.template`.
+
+3. **Configure TickTick credentials**:
+   Edit the `.env` file with your TickTick Client ID and Client Secret.
+   For Docker environments, you may need to specify your host machine's IP address or hostname for the redirect URI:
+   ```
+   TICKTICK_CLIENT_ID=your_client_id_here
+   TICKTICK_CLIENT_SECRET=your_client_secret_here
+   TICKTICK_REDIRECT_URI=http://your_host_ip_or_hostname:8000/callback
+   ```
+
+4. **Run the authentication process**:
+   ```bash
+   docker-compose run --service-ports ticktick-auth
+   ```
+   If a browser doesn't open automatically, open the URL displayed in the console.
+
+5. **Run the MCP server**:
+   Once authenticated, you can start the MCP server:
+   ```bash
+   docker-compose up ticktick-mcp
+   ```
 
 ## Authentication with TickTick
 
@@ -147,6 +186,9 @@ Here are some example prompts to use with Claude after connecting the TickTick M
 ```
 ticktick-mcp/
 ├── .env.template          # Template for environment variables
+├── Dockerfile             # Docker image definition
+├── docker-compose.yml     # Docker services configuration
+├── setup-env.sh           # Environment setup helper script
 ├── README.md              # Project documentation
 ├── requirements.txt       # Project dependencies
 ├── setup.py               # Package setup file
@@ -161,6 +203,36 @@ ticktick-mcp/
         ├── server.py      # MCP server implementation
         └── ticktick_client.py  # TickTick API client
 ```
+
+### Development with Docker
+
+When developing with Docker, you can use the following workflow:
+
+1. **Make changes to the code** on your local machine.
+
+2. **Rebuild the Docker image**:
+   ```bash
+   docker-compose build
+   ```
+
+3. **Run tests or the server**:
+   ```bash
+   # Run the server
+   docker-compose up ticktick-mcp
+   
+   # Or run tests
+   docker-compose run ticktick-mcp python test_server.py
+   ```
+
+4. **View logs** for debugging:
+   ```bash
+   docker-compose logs -f ticktick-mcp
+   ```
+
+5. **Access a shell in the container** for debugging:
+   ```bash
+   docker-compose run --rm ticktick-mcp bash
+   ```
 
 ### Authentication Flow
 

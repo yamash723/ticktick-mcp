@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  ticktick-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ticktick-mcp
+    volumes:
+      - ./.env:/app/.env:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+
+  # 認証用サービス（必要に応じて実行）
+  ticktick-auth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: auth
+    container_name: ticktick-auth
+    volumes:
+      - ./.env:/app/.env
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
